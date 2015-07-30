@@ -23,11 +23,34 @@
 #include <libopencm3/stm32/usart.h>
 #include <libopencm3/cm3/nvic.h>
 #include <libopencm3/stm32/flash.h>
+#include <libopencm3/usb/usbd.h>
+#include <libopencm3/usb/hid.h>
+#include <libopencm3/usb/cdc.h>
+
 #include <stdio.h>
 #include <errno.h>
 
 #include "hwconfig.h"
+#include "usb_config.h"
+
+uint8_t usbd_control_buffer[128];
+
+
 int _write(int file, char *ptr, int len);
+
+int _write(int file, char *ptr, int len)
+{
+	int i;
+
+	if (file == 1) {
+		for (i = 0; i < len; i++)
+			usart_send_blocking(USART1, ptr[i]);
+		return i;
+	}
+
+	errno = EIO;
+	return -1;
+}
 
 static void rcc_clock_setup_in_hse_8mhz_out_48mhz(void)
 {
@@ -116,50 +139,113 @@ static void usart_setup(void)
 
 static void gpio_setup(void)
 {
-	gpio_set(LED_PORT, LED_BIT);
+	led_Off();
+	usb_Off();
 
 	gpio_set_mode(LED_PORT, GPIO_MODE_OUTPUT_2_MHZ,
 		      GPIO_CNF_OUTPUT_PUSHPULL, LED_BIT);
+	
+	gpio_set_mode(USB_PULLUP_PORT, GPIO_MODE_OUTPUT_2_MHZ,
+		      GPIO_CNF_OUTPUT_PUSHPULL,USB_PULLUP_BIT);
 }
 
-int _write(int file, char *ptr, int len)
+static int control_request(usbd_device *usbd_dev, struct usb_setup_data *req, uint8_t **buf,
+		uint16_t *len, void (**complete)(usbd_device *usbd_dev, struct usb_setup_data *req))
 {
-	int i;
+	(void)complete;
+	(void)buf;
+	(void)usbd_dev;
 
-	if (file == 1) {
-		for (i = 0; i < len; i++)
-			usart_send_blocking(USART1, ptr[i]);
-		return i;
+	switch (req->bRequest) {
+	case USB_CDC_REQ_SET_CONTROL_LINE_STATE: {
+		/*
+		 * This Linux cdc_acm driver requires this to be implemented
+		 * even though it's optional in the CDC spec, and we don't
+		 * advertise it in the ACM functional descriptor.
+		 */
+		char local_buf[10];
+		struct usb_cdc_notification *notif = (void *)local_buf;
+
+		/* We echo signals back to host as notification. */
+		notif->bmRequestType = 0xA1;
+		notif->bNotification = USB_CDC_NOTIFY_SERIAL_STATE;
+		notif->wValue = 0;
+		notif->wIndex = 0;
+		notif->wLength = 2;
+		local_buf[8] = req->wValue & 3;
+		local_buf[9] = 0;
+		// usbd_ep_write_packet(0x83, buf, 10);
+		return 1;
+		}
+	case USB_CDC_REQ_SET_LINE_CODING:
+		if (*len < sizeof(struct usb_cdc_line_coding))
+			return 0;
+		return 1;
 	}
+	return 0;
+}
 
-	errno = EIO;
-	return -1;
+static void cdcacm_data_1_rx_cb(usbd_device *usbd_dev, uint8_t ep)
+{
+	(void)ep;
+	(void)usbd_dev;
+
+	char buf[64];
+	int len = usbd_ep_read_packet(usbd_dev, 0x01, buf, 64);
+
+	if (len) {
+		usbd_ep_write_packet(usbd_dev, 0x82, buf, len);
+		buf[len] = 0;
+	}
+}
+
+static void set_config(usbd_device *usbd_dev, uint16_t wValue)
+{
+	(void)wValue;
+	(void)usbd_dev;
+
+	usbd_ep_setup(usbd_dev, 0x01, USB_ENDPOINT_ATTR_BULK, 64, cdcacm_data_1_rx_cb);
+	usbd_ep_setup(usbd_dev, 0x82, USB_ENDPOINT_ATTR_BULK, 64, NULL);
+	usbd_ep_setup(usbd_dev, 0x83, USB_ENDPOINT_ATTR_INTERRUPT, 8, NULL);
+
+	usbd_register_control_callback(
+				usbd_dev,
+				USB_REQ_TYPE_CLASS | USB_REQ_TYPE_INTERFACE,
+				USB_REQ_TYPE_TYPE | USB_REQ_TYPE_RECIPIENT,
+				control_request);
 }
 
 int main(void)
 {
-	int counter = 0;
-	float fcounter = 0.0;
-	double dcounter = 0.0;
-
+	int i, sp;
+	usbd_device *usbd_dev;
+	
 	clock_setup();
 	gpio_setup();
 	usart_setup();
-
+	
+	usbd_dev = usbd_init(&stm32f103_usb_driver, &dev, &config, usb_strings,
+						3, usbd_control_buffer, sizeof(usbd_control_buffer));
+	usbd_register_set_config_callback(usbd_dev, set_config);
+	
+	for (i = 0; i < 0x80000; i++)
+		__asm__("nop");
+	
+	i = 0;
 	led_On();
-	/*
-	 * Write Hello World, an integer, float and double all over
-	 * again while incrementing the numbers.
-	 */
+	usb_On();
+	
+	asm volatile ("mrs     %0, MSP" : "=r" (sp) : : "memory");
+	printf("Hello World! Stack = %8X\r\n", sp);
+	
 	while (1) {
-		int sp;
-		asm volatile ("mrs     %0, MSP" : "=r" (sp) : : "memory");
-		printf("Hello World! %i %f %f Stack = %8X\r\n", counter, fcounter,
-		       dcounter, sp);
-		counter++;
-		fcounter += 0.01;
-		dcounter += 0.01;
-		
+		usbd_poll(usbd_dev);
+		i++;
+		if(i == 0x8000)
+		{
+			printf("I 'm alive\r\n");
+			i = 0;
+		}
 	}
 
 	return 0;

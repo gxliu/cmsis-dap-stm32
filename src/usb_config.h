@@ -123,6 +123,7 @@ static const struct usb_iface_assoc_descriptor cdc_iad[]=
 	.iFunction = 0x02,
 }};
 
+
 static const struct usb_iface_assoc_descriptor hid_iad[]=
 {{
 	.bLength =  USB_DT_INTERFACE_ASSOCIATION_SIZE,

@@ -2,7 +2,7 @@
 #define LED_BIT			GPIO12
 
 #define USB_PULLUP_PORT	GPIOA
-#define USB_PULLUP_BIT	GPIO15
+#define USB_PULLUP_BIT	GPIO8
 
 #define led_Off()	gpio_clear(LED_PORT, LED_BIT)
 #define led_On()	gpio_set(LED_PORT, LED_BIT)
