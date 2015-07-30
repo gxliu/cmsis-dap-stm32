@@ -18,35 +18,11 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with this library.  If not, see <http://www.gnu.org/licenses/>.
  */
-#ifndef HWCONFIG_H
-#define HWCONFIG_H
-
-#define CUSTOM_HW
-#ifdef CUSTOM_HW
-	#define LED_PORT		GPIOB
-	#define LED_BIT			GPIO12
-
-	#define USB_PULLUP_PORT	GPIOA
-	#define USB_PULLUP_BIT	GPIO8
-
-	#define led_Off()	gpio_clear(LED_PORT, LED_BIT)
-	#define led_On()	gpio_set(LED_PORT, LED_BIT)
-
-	#define usb_Off()	gpio_clear(USB_PULLUP_PORT, USB_PULLUP_BIT)
-	#define usb_On()	gpio_set(USB_PULLUP_PORT, USB_PULLUP_BIT)
-#else
-	#error Please define a specific Debugger hardware!
-#endif
-
-#define DEBUG /*I haven't any debugger to use, so I uses UART1 to Debug */
-
-#ifdef DEBUG
-	#define dbg(...)	printf("DEBUG : "__VA_ARGS__)
-	#include <stdio.h>
-	#include <errno.h>
-	int _write(int file, char *ptr, int len); /* newlib stub function */
-#else
-	#define dbg(...)
-#endif
-
+#ifndef USB_H
+#define USB_H
+void set_config(usbd_device *usbd_dev, uint16_t wValue);
+extern uint8_t usbd_control_buffer[256];
+extern const struct usb_device_descriptor dev;
+extern const struct usb_config_descriptor config;
+extern const char *usb_strings[];
 #endif

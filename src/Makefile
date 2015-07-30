@@ -19,6 +19,8 @@
 
 BINARY = cmsis-dap-stm32
 
+OBJS = system.o uart.o usb.o
+
 LDSCRIPT = ../cmsis-dap-stm32f103.ld
 
 include ../Makefile.include

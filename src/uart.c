@@ -18,35 +18,47 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with this library.  If not, see <http://www.gnu.org/licenses/>.
  */
-#ifndef HWCONFIG_H
-#define HWCONFIG_H
+#include <libopencm3/stm32/rcc.h>
+#include <libopencm3/stm32/gpio.h>
+#include <libopencm3/stm32/usart.h>
+#include <libopencm3/cm3/nvic.h>
 
-#define CUSTOM_HW
-#ifdef CUSTOM_HW
-	#define LED_PORT		GPIOB
-	#define LED_BIT			GPIO12
-
-	#define USB_PULLUP_PORT	GPIOA
-	#define USB_PULLUP_BIT	GPIO8
-
-	#define led_Off()	gpio_clear(LED_PORT, LED_BIT)
-	#define led_On()	gpio_set(LED_PORT, LED_BIT)
-
-	#define usb_Off()	gpio_clear(USB_PULLUP_PORT, USB_PULLUP_BIT)
-	#define usb_On()	gpio_set(USB_PULLUP_PORT, USB_PULLUP_BIT)
-#else
-	#error Please define a specific Debugger hardware!
-#endif
-
-#define DEBUG /*I haven't any debugger to use, so I uses UART1 to Debug */
+#include "hwconfig.h"
+#include "common.h"
+#include "uart.h"
 
 #ifdef DEBUG
-	#define dbg(...)	printf("DEBUG : "__VA_ARGS__)
-	#include <stdio.h>
-	#include <errno.h>
-	int _write(int file, char *ptr, int len); /* newlib stub function */
-#else
-	#define dbg(...)
+int _write(int file, char *ptr, int len)
+{
+	int i;
+
+	if (file == 1) {
+		for (i = 0; i < len; i++)
+			usart_send_blocking(USART1, ptr[i]);
+		return i;
+	}
+
+	errno = EIO;
+	return -1;
+}
 #endif
 
+#ifdef DEBUG
+void usart_setup(void)
+{
+	/* Setup GPIO pin GPIO_USART1_TX. */
+	gpio_set_mode(GPIOA, GPIO_MODE_OUTPUT_50_MHZ,
+		      GPIO_CNF_OUTPUT_ALTFN_PUSHPULL, GPIO_USART1_TX);
+
+	/* Setup UART parameters. */
+	usart_set_baudrate(USART1, 115200);
+	usart_set_databits(USART1, 8);
+	usart_set_stopbits(USART1, USART_STOPBITS_1);
+	usart_set_mode(USART1, USART_MODE_TX);
+	usart_set_parity(USART1, USART_PARITY_NONE);
+	usart_set_flow_control(USART1, USART_FLOWCONTROL_NONE);
+
+	/* Finally enable the USART. */
+	usart_enable(USART1);
+}
 #endif
