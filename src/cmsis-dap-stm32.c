@@ -1,122 +1,166 @@
 /*
- * 
+ * This file is part of the libopencm3 project.
+ *
+ * Copyright (C) 2009 Uwe Hermann <uwe@hermann-uwe.de>,
+ * Copyright (C) 2011 Piotr Esden-Tempski <piotr@esden.net>
+ *
+ * This library is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with this library.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <stdlib.h>
 #include <libopencm3/stm32/rcc.h>
 #include <libopencm3/stm32/gpio.h>
-#include <libopencm3/cm3/systick.h>
-#include <libopencm3/usb/usbd.h>
-#include <libopencm3/usb/hid.h>
+#include <libopencm3/stm32/usart.h>
+#include <libopencm3/cm3/nvic.h>
+#include <libopencm3/stm32/flash.h>
+#include <stdio.h>
+#include <errno.h>
 
-#include "usb_config.h"
+#include "hwconfig.h"
+int _write(int file, char *ptr, int len);
 
-
-/* Buffer to be used for control requests. */
-uint8_t usbd_control_buffer[128];
-
-static int hid_control_request(usbd_device *usbd_dev, struct usb_setup_data *req, uint8_t **buf, uint16_t *len,
-			void (**complete)(usbd_device *usbd_dev, struct usb_setup_data *req))
+static void rcc_clock_setup_in_hse_8mhz_out_48mhz(void)
 {
-	(void)complete;
-	(void)usbd_dev;
+	/* Enable internal high-speed oscillator. */
+	rcc_osc_on(HSI);
+	rcc_wait_for_osc_ready(HSI);
 
-	if ((req->bmRequestType != 0x81) ||
-	   (req->bRequest != USB_REQ_GET_DESCRIPTOR) ||
-	   (req->wValue != 0x2200))
-		return 0;
+	/* Select HSI as SYSCLK source. */
+	rcc_set_sysclk_source(RCC_CFGR_SW_SYSCLKSEL_HSICLK);
+	
+	/* Turn on external clock */
+	rcc_osc_on(HSE);
+	rcc_wait_for_osc_ready(HSE);
+	rcc_set_sysclk_source(RCC_CFGR_SW_SYSCLKSEL_HSECLK);
+	/*
+	 * Set prescalers for AHB, ADC, ABP1, ABP2.
+	 * Do this before touching the PLL (TODO: why?).
+	 */
+	rcc_set_hpre(RCC_CFGR_HPRE_SYSCLK_NODIV);	/*Set.48MHz Max.72MHz */
+	rcc_set_adcpre(RCC_CFGR_ADCPRE_PCLK2_DIV8);	/*Set. 6MHz Max.14MHz */
+	rcc_set_ppre1(RCC_CFGR_PPRE1_HCLK_DIV2);	/*Set.24MHz Max.36MHz */
+	rcc_set_ppre2(RCC_CFGR_PPRE2_HCLK_NODIV);	/*Set.48MHz Max.72MHz */
+	rcc_set_usbpre(RCC_CFGR_USBPRE_PLL_CLK_NODIV);  /*Set.48MHz Max.48MHz */
 
-	/* Handle the HID report descriptor. */
-	*buf = (uint8_t *)hid_report_descriptor;
-	*len = sizeof(hid_report_descriptor);
+	/*
+	 * Sysclk runs with 48MHz -> 1 waitstates.
+	 * 0WS from 0-24MHz
+	 * 1WS from 24-48MHz
+	 * 2WS from 48-72MHz
+	 */
+	flash_set_ws(FLASH_ACR_LATENCY_1WS);
 
-	return 1;
+	/*
+	 * Set the PLL multiplication factor to 6
+	 * 8MHz (external) * 6 (multiplier) = 48MHz
+	 */
+	rcc_set_pll_multiplication_factor(RCC_CFGR_PLLMUL_PLL_CLK_MUL6);
+
+	/* Select HSE as PLL source. */
+	rcc_set_pll_source(RCC_CFGR_PLLSRC_HSE_CLK);
+
+	/* Enable PLL oscillator and wait for it to stabilize. */
+	rcc_osc_on(PLL);
+	rcc_wait_for_osc_ready(PLL);
+
+	/* Select PLL as SYSCLK source. */
+	rcc_set_sysclk_source(RCC_CFGR_SW_SYSCLKSEL_PLLCLK);
+
+	/* Set the peripheral clock frequencies used */
+	rcc_ahb_frequency = 48000000;
+	rcc_apb1_frequency = 24000000;
+	rcc_apb2_frequency = 48000000;
 }
-
-
-static void hid_set_config(usbd_device *usbd_dev, uint16_t wValue)
-{
-	(void)wValue;
-	(void)usbd_dev;
-
-	usbd_ep_setup(usbd_dev, 0x81, USB_ENDPOINT_ATTR_INTERRUPT, 4, NULL);
-
-	usbd_register_control_callback(
-				usbd_dev,
-				USB_REQ_TYPE_STANDARD | USB_REQ_TYPE_INTERFACE,
-				USB_REQ_TYPE_TYPE | USB_REQ_TYPE_RECIPIENT,
-				hid_control_request);
-
-	systick_set_clocksource(STK_CSR_CLKSOURCE_AHB_DIV8);
-	/* SysTick interrupt every N clock pulses: set reload to N-1 */
-	systick_set_reload(99999);
-	systick_interrupt_enable();
-	systick_counter_enable();
-}
-
-
-#if 0 /* is this used? */
-void sys_tick_handler(void)
-{
-	static int x = 0;
-	static int dir = 1;
-	uint8_t buf[4] = {0, 0, 0, 0};
-
-	buf[1] = dir;
-	x += dir;
-	if (x > 30)
-		dir = -dir;
-	if (x < -30)
-		dir = -dir;
-
-	usbd_ep_write_packet(usbd_dev, 0x81, buf, 4);
-}
-#endif
 
 static void clock_setup(void)
 {
-	rcc_clock_setup_in_hsi_out_48mhz();
+	rcc_clock_setup_in_hse_8mhz_out_48mhz();
 
+	/* Enable GPIOB clock (for LED GPIOs). */
+	rcc_periph_clock_enable(RCC_GPIOB);
+
+	/* Enable clocks for GPIO port A (for GPIO_USART1_TX) and USART1. */
+	rcc_periph_clock_enable(RCC_GPIOA);
 	rcc_periph_clock_enable(RCC_AFIO);
 	AFIO_MAPR |= AFIO_MAPR_SWJ_CFG_JTAG_OFF_SW_ON;
-	
-	rcc_periph_clock_enable(RCC_GPIOA);
-	rcc_periph_clock_enable(RCC_GPIOB);
-	
+	rcc_periph_clock_enable(RCC_USART1);
+}
+
+static void usart_setup(void)
+{
+	/* Setup GPIO pin GPIO_USART1_TX. */
+	gpio_set_mode(GPIOA, GPIO_MODE_OUTPUT_50_MHZ,
+		      GPIO_CNF_OUTPUT_ALTFN_PUSHPULL, GPIO_USART1_TX);
+
+	/* Setup UART parameters. */
+	usart_set_baudrate(USART1, 115200);
+	usart_set_databits(USART1, 8);
+	usart_set_stopbits(USART1, USART_STOPBITS_1);
+	usart_set_mode(USART1, USART_MODE_TX);
+	usart_set_parity(USART1, USART_PARITY_NONE);
+	usart_set_flow_control(USART1, USART_FLOWCONTROL_NONE);
+
+	/* Finally enable the USART. */
+	usart_enable(USART1);
 }
 
 static void gpio_setup(void)
 {
-	gpio_set_mode(GPIOB, GPIO_MODE_OUTPUT_2_MHZ,
-		      GPIO_CNF_OUTPUT_PUSHPULL, GPIO12);
-	gpio_set_mode(GPIOA, GPIO_MODE_OUTPUT_2_MHZ,
-		      GPIO_CNF_OUTPUT_PUSHPULL, GPIO15);
-		      
-	gpio_clear(GPIOB, GPIO12);
-	gpio_clear(GPIOA, GPIO15);
+	gpio_set(LED_PORT, LED_BIT);
+
+	gpio_set_mode(LED_PORT, GPIO_MODE_OUTPUT_2_MHZ,
+		      GPIO_CNF_OUTPUT_PUSHPULL, LED_BIT);
 }
 
-
-int main(void)
+int _write(int file, char *ptr, int len)
 {
 	int i;
 
-	usbd_device *usbd_dev;
+	if (file == 1) {
+		for (i = 0; i < len; i++)
+			usart_send_blocking(USART1, ptr[i]);
+		return i;
+	}
+
+	errno = EIO;
+	return -1;
+}
+
+int main(void)
+{
+	int counter = 0;
+	float fcounter = 0.0;
+	double dcounter = 0.0;
 
 	clock_setup();
 	gpio_setup();
+	usart_setup();
 
-	usbd_dev = usbd_init(&stm32f103_usb_driver, &dev, &config, usb_strings, 3, usbd_control_buffer, sizeof(usbd_control_buffer));
-	usbd_register_set_config_callback(usbd_dev, hid_set_config);
-
-	for (i = 0; i < 0x80000; i++)
-		__asm__("nop");
-
-	gpio_set(GPIOA, GPIO15);
-	gpio_set(GPIOB, GPIO12);
-	while (1)
-	{
-		usbd_poll(usbd_dev);
+	led_On();
+	/*
+	 * Write Hello World, an integer, float and double all over
+	 * again while incrementing the numbers.
+	 */
+	while (1) {
+		int sp;
+		asm volatile ("mrs     %0, MSP" : "=r" (sp) : : "memory");
+		printf("Hello World! %i %f %f Stack = %8X\r\n", counter, fcounter,
+		       dcounter, sp);
+		counter++;
+		fcounter += 0.01;
+		dcounter += 0.01;
+		
 	}
-}
 
+	return 0;
+}
