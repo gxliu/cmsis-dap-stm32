@@ -106,3 +106,24 @@ void gpio_setup(void)
 	gpio_set_mode(USB_PULLUP_PORT, GPIO_MODE_OUTPUT_2_MHZ,
 		      GPIO_CNF_OUTPUT_PUSHPULL,USB_PULLUP_BIT);
 }
+
+
+#ifdef DEBUG
+void hexdump(char *buffer, int len)
+{
+int     i;
+
+    for(i = 0; i < len; i++){
+        if(i != 0){
+            if(i % 16 == 0){
+                printf("\r\n");
+            }else{
+                printf(" ");
+            }
+        }
+        printf("0x%02x", buffer[i] & 0xff);
+    }
+    if(i != 0)
+        printf("\r\n");
+}
+#endif

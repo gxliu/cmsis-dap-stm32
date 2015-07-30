@@ -45,8 +45,10 @@
 	#include <stdio.h>
 	#include <errno.h>
 	int _write(int file, char *ptr, int len); /* newlib stub function */
+	void hexdump(char *buffer, int len);
 #else
 	#define dbg(...)
+	#define hexdump(...)
 #endif
 
 #endif

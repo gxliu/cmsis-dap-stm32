@@ -165,7 +165,27 @@ static const struct usb_iface_assoc_descriptor cdc_iad[]=
 /*** HID Section ***/
 
 static const uint8_t hid_report_descriptor[] = {
-
+	0x05, 0x8c, /* USAGE_PAGE (ST Page) */
+	0x09, 0x01, /* USAGE (Demo Kit) */
+	0xa1, 0x01, /* COLLECTION (Application) */
+	 
+	// The Input report
+	0x09,0x03, // USAGE ID - Vendor defined
+	0x15,0x00, // LOGICAL_MINIMUM (0)
+	0x26,0x00, 0xFF, // LOGICAL_MAXIMUM (255)
+	0x75,0x08, // REPORT_SIZE (8bit)
+	0x95,0x40, // REPORT_COUNT (64Byte)
+	0x81,0x02, // INPUT (Data,Var,Abs)
+ 
+	// The Output report
+	0x09,0x04, // USAGE ID - Vendor defined
+	0x15,0x00, // LOGICAL_MINIMUM (0)
+	0x26,0x00,0xFF, // LOGICAL_MAXIMUM (255)
+	0x75,0x08, // REPORT_SIZE (8bit)
+	0x95,0x40, // REPORT_COUNT (64Byte)
+	0x91,0x02, // OUTPUT (Data,Var,Abs)
+ 
+	0xc0 /* END_COLLECTION */
 };
 
 static const struct {
@@ -211,8 +231,8 @@ const struct usb_interface_descriptor hid_iface = {
 	.bAlternateSetting = 0,
 	.bNumEndpoints = 2,
 	.bInterfaceClass = USB_CLASS_HID,
-	.bInterfaceSubClass = 1, /* boot */
-	.bInterfaceProtocol = 2, /* mouse */
+	.bInterfaceSubClass = 0,
+	.bInterfaceProtocol = 0,
 	.iInterface = 0,
 
 	.endpoint = hid_endpoint,
@@ -228,7 +248,7 @@ static const struct usb_iface_assoc_descriptor hid_iad[]=
 	.bFirstInterface = 0x00,
 	.bInterfaceCount = 0x01,
 	.bFunctionClass = USB_CLASS_HID, /* HID */
-	.bFunctionSubClass = 0xff,
+	.bFunctionSubClass = 0x00,
 	.bFunctionProtocol = 0x00,
 	.iFunction = 0x04,
 }};
@@ -330,20 +350,6 @@ const char *usb_strings[] = {
 	"CMSIS-DAP MSC"
 };
 
-static void cdcacm_data_1_rx_cb(usbd_device *usbd_dev, uint8_t ep)
-{
-	(void)ep;
-	(void)usbd_dev;
-
-	char buf[64];
-	int len = usbd_ep_read_packet(usbd_dev, USB_ACM_BULK_OUT_EP, buf, 64);
-
-	if (len) {
-		usbd_ep_write_packet(usbd_dev, USB_ACM_BULK_IN_EP, buf, len);
-		buf[len] = 0;
-	}
-}
-
 static int cdc_control_request(usbd_device *usbd_dev, struct usb_setup_data *req, uint8_t **buf,
 		uint16_t *len, void (**complete)(usbd_device *usbd_dev, struct usb_setup_data *req))
 {
@@ -417,6 +423,36 @@ static int hid_control_request(usbd_device *usbd_dev, struct usb_setup_data *req
 	return 0;
 }
 
+static void cdcacm_data_1_rx_cb(usbd_device *usbd_dev, uint8_t ep)
+{
+	(void)ep;
+	(void)usbd_dev;
+
+	char buf[64];
+	int len = usbd_ep_read_packet(usbd_dev, USB_ACM_BULK_OUT_EP, buf, 64);
+
+	if (len) {
+		usbd_ep_write_packet(usbd_dev, USB_ACM_BULK_IN_EP, buf, len);
+		buf[len] = 0;
+	}
+}
+
+
+static void hid_rx(usbd_device *usbd_dev, uint8_t ep)
+{
+	(void)ep;
+	(void)usbd_dev;
+
+	char buf[64];
+	int len = usbd_ep_read_packet(usbd_dev, HID_EP_OUT, buf, 64);
+	if (len) {
+		dbg("HID-Rx ,length = %d\r\n", len);
+		hexdump(buf, len);
+		usbd_ep_write_packet(usbd_dev, HID_EP_IN, "Hello world", 12);
+	}
+}
+
+
 void set_config(usbd_device *usbd_dev, uint16_t wValue)
 {
 	(void)wValue;
@@ -426,8 +462,10 @@ void set_config(usbd_device *usbd_dev, uint16_t wValue)
 	usbd_ep_setup(usbd_dev, USB_ACM_BULK_OUT_EP, USB_ENDPOINT_ATTR_BULK, 64, cdcacm_data_1_rx_cb);
 	usbd_ep_setup(usbd_dev, USB_ACM_BULK_IN_EP, USB_ENDPOINT_ATTR_BULK, 64, NULL);
 	usbd_ep_setup(usbd_dev, USB_ACM_CONTROL_EP, USB_ENDPOINT_ATTR_INTERRUPT, 8, NULL);
+	
 	/*** Setting up HID Endpoints ***/
-	usbd_ep_setup(usbd_dev, HID_EP_IN, USB_ENDPOINT_ATTR_INTERRUPT, 4, NULL);
+	usbd_ep_setup(usbd_dev, HID_EP_IN, USB_ENDPOINT_ATTR_INTERRUPT, 64, NULL);
+	usbd_ep_setup(usbd_dev, HID_EP_OUT, USB_ENDPOINT_ATTR_INTERRUPT, 64, hid_rx);
 				
 	usbd_register_control_callback(
 				usbd_dev,

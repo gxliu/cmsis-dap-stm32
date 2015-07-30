@@ -18,3 +18,4 @@ Licensing
 
 This repository's schematic digram and firmware code is under LGPLv3 license.
 
+The HIDraw tools is founded by https://www.pjrc.com/teensy/rawhid.html. Thank paul!
