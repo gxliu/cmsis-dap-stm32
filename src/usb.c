@@ -35,7 +35,6 @@
 #include "common.h"
 
 uint8_t usbd_control_buffer[256];
-
 const struct usb_device_descriptor dev = {
 	.bLength = USB_DT_DEVICE_SIZE,
 	.bDescriptorType = USB_DT_DEVICE,
@@ -53,6 +52,7 @@ const struct usb_device_descriptor dev = {
 	.bNumConfigurations = 1,
 };
 
+
 /*
  * This notification endpoint isn't implemented. According to CDC spec its
  * optional, but its absence causes a NULL pointer dereference in Linux
@@ -61,23 +61,23 @@ const struct usb_device_descriptor dev = {
 static const struct usb_endpoint_descriptor comm_endp[] = {{
 	.bLength = USB_DT_ENDPOINT_SIZE,
 	.bDescriptorType = USB_DT_ENDPOINT,
-	.bEndpointAddress = 0x83,
+	.bEndpointAddress = USB_ACM_CONTROL_EP,
 	.bmAttributes = USB_ENDPOINT_ATTR_INTERRUPT,
 	.wMaxPacketSize = 16,
-	.bInterval = 255,
+	.bInterval = 25,
 }};
 
 static const struct usb_endpoint_descriptor data_endp[] = {{
 	.bLength = USB_DT_ENDPOINT_SIZE,
 	.bDescriptorType = USB_DT_ENDPOINT,
-	.bEndpointAddress = 0x01,
+	.bEndpointAddress = USB_ACM_BULK_OUT_EP,
 	.bmAttributes = USB_ENDPOINT_ATTR_BULK,
 	.wMaxPacketSize = 64,
 	.bInterval = 1,
 }, {
 	.bLength = USB_DT_ENDPOINT_SIZE,
 	.bDescriptorType = USB_DT_ENDPOINT,
-	.bEndpointAddress = 0x82,
+	.bEndpointAddress = USB_ACM_BULK_IN_EP,
 	.bmAttributes = USB_ENDPOINT_ATTR_BULK,
 	.wMaxPacketSize = 64,
 	.bInterval = 1,
@@ -161,37 +161,45 @@ static const struct usb_iface_assoc_descriptor cdc_iad[]=
 	.iFunction = 0x05,
 }};
 
-
-static const struct usb_iface_assoc_descriptor hid_iad[]=
-{{
-	.bLength =  USB_DT_INTERFACE_ASSOCIATION_SIZE,
-	.bDescriptorType = USB_DT_INTERFACE_ASSOCIATION,
-	.bFirstInterface = 0x00,
-	.bInterfaceCount = 0x01,
-	.bFunctionClass = USB_CLASS_HID, /* HID */
-	.bFunctionSubClass = 0xff,
-	.bFunctionProtocol = 0x00,
-	.iFunction = 0x04,
-}};
-
 static const uint8_t hid_report_descriptor[] = {
-    0x06, 0x00, 0xff,              // USAGE_PAGE (Generic Desktop)
-    0x09, 0x01,                    // USAGE (Vendor Usage 1)
-    0xa1, 0x01,                    // COLLECTION (Application)
-    0x15, 0x00,                    //   LOGICAL_MINIMUM (0)
-    0x26, 0xff, 0x00,              //   LOGICAL_MAXIMUM (255)
-    0x75, 0x08,                    //   REPORT_SIZE (8)
-
-    0x85, 0x01,                    //   REPORT_ID (1)
-    0x95, 0x06,                    //   REPORT_COUNT (6)
-    0x09, 0x00,                    //   USAGE (Undefined)
-    0xb2, 0x02, 0x01,              //   FEATURE (Data,Var,Abs,Buf)
-
-    0x85, 0x02,                    //   REPORT_ID (2)
-    0x95, 0x83,                    //   REPORT_COUNT (131)
-    0x09, 0x00,                    //   USAGE (Undefined)
-    0xb2, 0x02, 0x01,              //   FEATURE (Data,Var,Abs,Buf)
-    0xc0                           // END_COLLECTION
+	0x05, 0x01, /* USAGE_PAGE (Generic Desktop)         */
+	0x09, 0x02, /* USAGE (Mouse)                        */
+	0xa1, 0x01, /* COLLECTION (Application)             */
+	0x09, 0x01, /*   USAGE (Pointer)                    */
+	0xa1, 0x00, /*   COLLECTION (Physical)              */
+	0x05, 0x09, /*     USAGE_PAGE (Button)              */
+	0x19, 0x01, /*     USAGE_MINIMUM (Button 1)         */
+	0x29, 0x03, /*     USAGE_MAXIMUM (Button 3)         */
+	0x15, 0x00, /*     LOGICAL_MINIMUM (0)              */
+	0x25, 0x01, /*     LOGICAL_MAXIMUM (1)              */
+	0x95, 0x03, /*     REPORT_COUNT (3)                 */
+	0x75, 0x01, /*     REPORT_SIZE (1)                  */
+	0x81, 0x02, /*     INPUT (Data,Var,Abs)             */
+	0x95, 0x01, /*     REPORT_COUNT (1)                 */
+	0x75, 0x05, /*     REPORT_SIZE (5)                  */
+	0x81, 0x01, /*     INPUT (Cnst,Ary,Abs)             */
+	0x05, 0x01, /*     USAGE_PAGE (Generic Desktop)     */
+	0x09, 0x30, /*     USAGE (X)                        */
+	0x09, 0x31, /*     USAGE (Y)                        */
+	0x09, 0x38, /*     USAGE (Wheel)                    */
+	0x15, 0x81, /*     LOGICAL_MINIMUM (-127)           */
+	0x25, 0x7f, /*     LOGICAL_MAXIMUM (127)            */
+	0x75, 0x08, /*     REPORT_SIZE (8)                  */
+	0x95, 0x03, /*     REPORT_COUNT (3)                 */
+	0x81, 0x06, /*     INPUT (Data,Var,Rel)             */
+	0xc0,       /*   END_COLLECTION                     */
+	0x09, 0x3c, /*   USAGE (Motion Wakeup)              */
+	0x05, 0xff, /*   USAGE_PAGE (Vendor Defined Page 1) */
+	0x09, 0x01, /*   USAGE (Vendor Usage 1)             */
+	0x15, 0x00, /*   LOGICAL_MINIMUM (0)                */
+	0x25, 0x01, /*   LOGICAL_MAXIMUM (1)                */
+	0x75, 0x01, /*   REPORT_SIZE (1)                    */
+	0x95, 0x02, /*   REPORT_COUNT (2)                   */
+	0xb1, 0x22, /*   FEATURE (Data,Var,Abs,NPrf)        */
+	0x75, 0x06, /*   REPORT_SIZE (6)                    */
+	0x95, 0x01, /*   REPORT_COUNT (1)                   */
+	0xb1, 0x01, /*   FEATURE (Cnst,Ary,Abs)             */
+	0xc0        /* END_COLLECTION                       */
 };
 
 static const struct {
@@ -214,38 +222,43 @@ static const struct {
 	},
 };
 
-const struct usb_endpoint_descriptor hid_endpoint[] = {{
+const struct usb_endpoint_descriptor hid_endpoint = {
 	.bLength = USB_DT_ENDPOINT_SIZE,
 	.bDescriptorType = USB_DT_ENDPOINT,
-	.bEndpointAddress = 0x84,
+	.bEndpointAddress = HID_EP_IN,
 	.bmAttributes = USB_ENDPOINT_ATTR_INTERRUPT,
-	.wMaxPacketSize = 64,
-	.bInterval = 0x01,
-},{
-	.bLength = USB_DT_ENDPOINT_SIZE,
-	.bDescriptorType = USB_DT_ENDPOINT,
-	.bEndpointAddress = 0x04,
-	.bmAttributes = USB_ENDPOINT_ATTR_INTERRUPT,
-	.wMaxPacketSize = 64,
-	.bInterval = 0x01,
-}};
+	.wMaxPacketSize = 4,
+	.bInterval = 0x20,
+};
 
 const struct usb_interface_descriptor hid_iface = {
 	.bLength = USB_DT_INTERFACE_SIZE,
 	.bDescriptorType = USB_DT_INTERFACE,
 	.bInterfaceNumber = 0,
 	.bAlternateSetting = 0,
-	.bNumEndpoints = 2,
+	.bNumEndpoints = 1,
 	.bInterfaceClass = USB_CLASS_HID,
-	.bInterfaceSubClass = 0xff,
-	.bInterfaceProtocol = 0,
+	.bInterfaceSubClass = 1, /* boot */
+	.bInterfaceProtocol = 2, /* mouse */
 	.iInterface = 0,
 
-	.endpoint = hid_endpoint,
+	.endpoint = &hid_endpoint,
 
 	.extra = &hid_function,
 	.extralen = sizeof(hid_function),
 };
+
+static const struct usb_iface_assoc_descriptor hid_iad[]=
+{{
+	.bLength =  USB_DT_INTERFACE_ASSOCIATION_SIZE,
+	.bDescriptorType = USB_DT_INTERFACE_ASSOCIATION,
+	.bFirstInterface = 0x00,
+	.bInterfaceCount = 0x01,
+	.bFunctionClass = USB_CLASS_HID, /* HID */
+	.bFunctionSubClass = 0xff,
+	.bFunctionProtocol = 0x00,
+	.iFunction = 0x04,
+}};
 
 const struct usb_interface ifaces[] = {{
 	.num_altsetting = 1,
@@ -264,7 +277,11 @@ const struct usb_config_descriptor config = {
 	.bLength = USB_DT_CONFIGURATION_SIZE,
 	.bDescriptorType = USB_DT_CONFIGURATION,
 	.wTotalLength = 0,
-	.bNumInterfaces = 2,
+#ifdef USB_ACM_ENABLE
+	.bNumInterfaces = 3,
+#else
+	.bNumInterfaces = 1,
+#endif
 	.bConfigurationValue = 1,
 	.iConfiguration = 0,
 	.bmAttributes = 0xC0,
@@ -281,6 +298,19 @@ const char *usb_strings[] = {
 	"CMSIS-DAP CDC"
 };
 
+static void cdcacm_data_1_rx_cb(usbd_device *usbd_dev, uint8_t ep)
+{
+	(void)ep;
+	(void)usbd_dev;
+
+	char buf[64];
+	int len = usbd_ep_read_packet(usbd_dev, USB_ACM_BULK_OUT_EP, buf, 64);
+
+	if (len) {
+		usbd_ep_write_packet(usbd_dev, USB_ACM_BULK_IN_EP, buf, len);
+		buf[len] = 0;
+	}
+}
 
 static int cdc_control_request(usbd_device *usbd_dev, struct usb_setup_data *req, uint8_t **buf,
 		uint16_t *len, void (**complete)(usbd_device *usbd_dev, struct usb_setup_data *req))
@@ -338,32 +368,21 @@ static int hid_control_request(usbd_device *usbd_dev, struct usb_setup_data *req
 {
 	(void)complete;
 	(void)usbd_dev;
-	dbg("HIDControl : bReq=%d, bReqT=%d, wValue=%x\r\n", req->bRequest, req->bmRequestType, req->wValue);
-	if ((req->bmRequestType == 0x81) &&
+	dbg("HIDControl : bReq=%d, bReqT=%d, wValue=0x%x\r\n", req->bRequest, 
+				req->bmRequestType, req->wValue);
+	if ((req->bmRequestType == HID_EP_IN) &&
 	   (req->bRequest == USB_REQ_GET_DESCRIPTOR) &&
 	   (req->wValue == 0x2200))
 	{
-		dbg("HID Get report descriptor\r\n");
+
+		/* Handle the HID report descriptor. */
 		*buf = (uint8_t *)hid_report_descriptor;
 		*len = sizeof(hid_report_descriptor);
+		dbg("HIDControl: Got report to the host\r\n");
 		return 1;
 	}
 
 	return 0;
-}
-
-static void cdcacm_data_1_rx_cb(usbd_device *usbd_dev, uint8_t ep)
-{
-	(void)ep;
-	(void)usbd_dev;
-
-	char buf[64];
-	int len = usbd_ep_read_packet(usbd_dev, 0x01, buf, 64);
-
-	if (len) {
-		usbd_ep_write_packet(usbd_dev, 0x82, buf, len);
-		buf[len] = 0;
-	}
 }
 
 void set_config(usbd_device *usbd_dev, uint16_t wValue)
@@ -371,21 +390,23 @@ void set_config(usbd_device *usbd_dev, uint16_t wValue)
 	(void)wValue;
 	(void)usbd_dev;
 
-	usbd_ep_setup(usbd_dev, 0x01, USB_ENDPOINT_ATTR_BULK, 64, cdcacm_data_1_rx_cb);
-	usbd_ep_setup(usbd_dev, 0x82, USB_ENDPOINT_ATTR_BULK, 64, NULL);
-	usbd_ep_setup(usbd_dev, 0x83, USB_ENDPOINT_ATTR_INTERRUPT, 8, NULL);
-	usbd_ep_setup(usbd_dev, 0x84, USB_ENDPOINT_ATTR_INTERRUPT, 64, NULL);
-	usbd_ep_setup(usbd_dev, 0x04, USB_ENDPOINT_ATTR_INTERRUPT, 64, NULL);	
-
-	usbd_register_control_callback(
-				usbd_dev,
-				USB_REQ_TYPE_CLASS | USB_REQ_TYPE_INTERFACE,
-				USB_REQ_TYPE_TYPE | USB_REQ_TYPE_RECIPIENT,
-				(usbd_control_callback)cdc_control_request);
+	/*** Setting up CDC Endpoints ***/
+	usbd_ep_setup(usbd_dev, USB_ACM_BULK_OUT_EP, USB_ENDPOINT_ATTR_BULK, 64, cdcacm_data_1_rx_cb);
+	usbd_ep_setup(usbd_dev, USB_ACM_BULK_IN_EP, USB_ENDPOINT_ATTR_BULK, 64, NULL);
+	usbd_ep_setup(usbd_dev, USB_ACM_CONTROL_EP, USB_ENDPOINT_ATTR_INTERRUPT, 8, NULL);
+	/*** Setting up HID Endpoints ***/
+	usbd_ep_setup(usbd_dev, HID_EP_IN, USB_ENDPOINT_ATTR_INTERRUPT, 4, NULL);
 				
 	usbd_register_control_callback(
 				usbd_dev,
 				USB_REQ_TYPE_STANDARD | USB_REQ_TYPE_INTERFACE,
 				USB_REQ_TYPE_TYPE | USB_REQ_TYPE_RECIPIENT,
 				(usbd_control_callback)hid_control_request);
+				
+	usbd_register_control_callback(
+				usbd_dev,
+				USB_REQ_TYPE_CLASS | USB_REQ_TYPE_INTERFACE,
+				USB_REQ_TYPE_TYPE | USB_REQ_TYPE_RECIPIENT,
+				(usbd_control_callback)cdc_control_request);
+	dbg("USB Linked up\r\n");
 }
