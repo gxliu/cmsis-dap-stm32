@@ -19,7 +19,7 @@
 
 BINARY = cmsis-dap-stm32
 
-OBJS = system.o uart.o usb.o
+OBJS = system.o uart.o usb.o ramdisk.o
 
 LDSCRIPT = ../cmsis-dap-stm32f103.ld
 

@@ -27,14 +27,16 @@
 #include <libopencm3/usb/usbd.h>
 #include <libopencm3/usb/hid.h>
 #include <libopencm3/usb/cdc.h>
+#include <libopencm3/usb/msc.h>
 
-#include <stdio.h>
 #include <errno.h>
 
 #include "hwconfig.h"
 #include "usb.h"
 #include "uart.h"
 #include "common.h"
+#include "ramdisk.h"
+
 
 int main(void)
 {
@@ -46,7 +48,7 @@ int main(void)
 	usart_setup();
 	
 	usbd_dev = usbd_init(&stm32f103_usb_driver, &dev, &config, usb_strings,
-						5, usbd_control_buffer, sizeof(usbd_control_buffer));
+						6, usbd_control_buffer, sizeof(usbd_control_buffer));
 	usbd_register_set_config_callback(usbd_dev, set_config);
 	
 	for (i = 0; i < 0x80000; i++)
@@ -58,15 +60,24 @@ int main(void)
 	
 	asm volatile ("mrs     %0, MSP" : "=r" (sp) : : "memory");
 	dbg("Hello World! Stack = %8X\r\n", sp);
-	
-	while (1) {
+
+#ifdef USB_MSC_ENABLE
+	usb_msc_init(usbd_dev, USB_MSC_BULK_IN_EP, 64, USB_MSC_BULK_OUT_EP, 64, 
+		"VendorID", "ProductID",
+			"0.00", ramdisk_blocks(), ramdisk_read, ramdisk_write);
+#endif	
+
+	while (1) 
+	{
 		usbd_poll(usbd_dev);
+#ifdef DEBUG
 		i++;
 		if(i == 0x80000)
 		{
 			dbg("I 'm alive\r\n");
 			i = 0;
 		}
+#endif
 	}
 
 	return 0;

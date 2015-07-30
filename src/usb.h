@@ -27,10 +27,15 @@ extern const struct usb_config_descriptor config;
 extern const char *usb_strings[];
 
 #define USB_ACM_BULK_OUT_EP		0x02
-#define USB_ACM_BULK_IN_EP		0x83
-#define USB_ACM_CONTROL_EP		0x84
+#define USB_ACM_BULK_IN_EP		0x82
+#define USB_ACM_CONTROL_EP		0x83
 #define USB_ACM_ENABLE
 
 #define HID_EP_IN				0x81
 #define HID_EP_OUT				0x01
+
+#define USB_MSC_BULK_OUT_EP		0x04
+#define USB_MSC_BULK_IN_EP		0x84
+//#define USB_MSC_ENABLE
+
 #endif

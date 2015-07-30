@@ -25,6 +25,7 @@
 #include <libopencm3/usb/usbd.h>
 #include <libopencm3/usb/hid.h>
 #include <libopencm3/usb/cdc.h>
+#include <libopencm3/usb/msc.h>
 
 #include <stdio.h>
 #include <errno.h>
@@ -52,11 +53,11 @@ const struct usb_device_descriptor dev = {
 	.bNumConfigurations = 1,
 };
 
-
 /*
  * This notification endpoint isn't implemented. According to CDC spec its
  * optional, but its absence causes a NULL pointer dereference in Linux
  * cdc_acm driver.
+ *  --- CDC configuration start---
  */
 static const struct usb_endpoint_descriptor comm_endp[] = {{
 	.bLength = USB_DT_ENDPOINT_SIZE,
@@ -161,45 +162,10 @@ static const struct usb_iface_assoc_descriptor cdc_iad[]=
 	.iFunction = 0x05,
 }};
 
+/*** HID Section ***/
+
 static const uint8_t hid_report_descriptor[] = {
-	0x05, 0x01, /* USAGE_PAGE (Generic Desktop)         */
-	0x09, 0x02, /* USAGE (Mouse)                        */
-	0xa1, 0x01, /* COLLECTION (Application)             */
-	0x09, 0x01, /*   USAGE (Pointer)                    */
-	0xa1, 0x00, /*   COLLECTION (Physical)              */
-	0x05, 0x09, /*     USAGE_PAGE (Button)              */
-	0x19, 0x01, /*     USAGE_MINIMUM (Button 1)         */
-	0x29, 0x03, /*     USAGE_MAXIMUM (Button 3)         */
-	0x15, 0x00, /*     LOGICAL_MINIMUM (0)              */
-	0x25, 0x01, /*     LOGICAL_MAXIMUM (1)              */
-	0x95, 0x03, /*     REPORT_COUNT (3)                 */
-	0x75, 0x01, /*     REPORT_SIZE (1)                  */
-	0x81, 0x02, /*     INPUT (Data,Var,Abs)             */
-	0x95, 0x01, /*     REPORT_COUNT (1)                 */
-	0x75, 0x05, /*     REPORT_SIZE (5)                  */
-	0x81, 0x01, /*     INPUT (Cnst,Ary,Abs)             */
-	0x05, 0x01, /*     USAGE_PAGE (Generic Desktop)     */
-	0x09, 0x30, /*     USAGE (X)                        */
-	0x09, 0x31, /*     USAGE (Y)                        */
-	0x09, 0x38, /*     USAGE (Wheel)                    */
-	0x15, 0x81, /*     LOGICAL_MINIMUM (-127)           */
-	0x25, 0x7f, /*     LOGICAL_MAXIMUM (127)            */
-	0x75, 0x08, /*     REPORT_SIZE (8)                  */
-	0x95, 0x03, /*     REPORT_COUNT (3)                 */
-	0x81, 0x06, /*     INPUT (Data,Var,Rel)             */
-	0xc0,       /*   END_COLLECTION                     */
-	0x09, 0x3c, /*   USAGE (Motion Wakeup)              */
-	0x05, 0xff, /*   USAGE_PAGE (Vendor Defined Page 1) */
-	0x09, 0x01, /*   USAGE (Vendor Usage 1)             */
-	0x15, 0x00, /*   LOGICAL_MINIMUM (0)                */
-	0x25, 0x01, /*   LOGICAL_MAXIMUM (1)                */
-	0x75, 0x01, /*   REPORT_SIZE (1)                    */
-	0x95, 0x02, /*   REPORT_COUNT (2)                   */
-	0xb1, 0x22, /*   FEATURE (Data,Var,Abs,NPrf)        */
-	0x75, 0x06, /*   REPORT_SIZE (6)                    */
-	0x95, 0x01, /*   REPORT_COUNT (1)                   */
-	0xb1, 0x01, /*   FEATURE (Cnst,Ary,Abs)             */
-	0xc0        /* END_COLLECTION                       */
+
 };
 
 static const struct {
@@ -222,27 +188,34 @@ static const struct {
 	},
 };
 
-const struct usb_endpoint_descriptor hid_endpoint = {
+const struct usb_endpoint_descriptor hid_endpoint[] = {{
 	.bLength = USB_DT_ENDPOINT_SIZE,
 	.bDescriptorType = USB_DT_ENDPOINT,
 	.bEndpointAddress = HID_EP_IN,
 	.bmAttributes = USB_ENDPOINT_ATTR_INTERRUPT,
-	.wMaxPacketSize = 4,
-	.bInterval = 0x20,
-};
+	.wMaxPacketSize = 64,
+	.bInterval = 0x01,
+},{
+	.bLength = USB_DT_ENDPOINT_SIZE,
+	.bDescriptorType = USB_DT_ENDPOINT,
+	.bEndpointAddress = HID_EP_OUT,
+	.bmAttributes = USB_ENDPOINT_ATTR_INTERRUPT,
+	.wMaxPacketSize = 64,
+	.bInterval = 0x01,
+}};
 
 const struct usb_interface_descriptor hid_iface = {
 	.bLength = USB_DT_INTERFACE_SIZE,
 	.bDescriptorType = USB_DT_INTERFACE,
 	.bInterfaceNumber = 0,
 	.bAlternateSetting = 0,
-	.bNumEndpoints = 1,
+	.bNumEndpoints = 2,
 	.bInterfaceClass = USB_CLASS_HID,
 	.bInterfaceSubClass = 1, /* boot */
 	.bInterfaceProtocol = 2, /* mouse */
 	.iInterface = 0,
 
-	.endpoint = &hid_endpoint,
+	.endpoint = hid_endpoint,
 
 	.extra = &hid_function,
 	.extralen = sizeof(hid_function),
@@ -260,10 +233,57 @@ static const struct usb_iface_assoc_descriptor hid_iad[]=
 	.iFunction = 0x04,
 }};
 
+/*** MSC Section ***/
+#ifdef USB_MSC_ENABLE
+static const struct usb_endpoint_descriptor msc_endp[] = {{
+	.bLength = USB_DT_ENDPOINT_SIZE,
+	.bDescriptorType = USB_DT_ENDPOINT,
+	.bEndpointAddress = USB_MSC_BULK_OUT_EP,
+	.bmAttributes = USB_ENDPOINT_ATTR_BULK,
+	.wMaxPacketSize = 64,
+	.bInterval = 0,
+}, {
+	.bLength = USB_DT_ENDPOINT_SIZE,
+	.bDescriptorType = USB_DT_ENDPOINT,
+	.bEndpointAddress = USB_MSC_BULK_IN_EP,
+	.bmAttributes = USB_ENDPOINT_ATTR_BULK,
+	.wMaxPacketSize = 64,
+	.bInterval = 0,
+}};
+
+static const struct usb_interface_descriptor msc_iface[] = {{
+	.bLength = USB_DT_INTERFACE_SIZE,
+	.bDescriptorType = USB_DT_INTERFACE,
+	.bInterfaceNumber = 3,
+	.bAlternateSetting = 0,
+	.bNumEndpoints = 2,
+	.bInterfaceClass = USB_CLASS_MSC,
+	.bInterfaceSubClass = USB_MSC_SUBCLASS_SCSI,
+	.bInterfaceProtocol = USB_MSC_PROTOCOL_BBB,
+	.iInterface = 0,
+	.endpoint = msc_endp,
+	.extra = NULL,
+	.extralen = 0
+}};
+
+static const struct usb_iface_assoc_descriptor msc_iad[]=
+{{
+	.bLength =  USB_DT_INTERFACE_ASSOCIATION_SIZE,
+	.bDescriptorType = USB_DT_INTERFACE_ASSOCIATION,
+	.bFirstInterface = 0x00,
+	.bInterfaceCount = 0x01,
+	.bFunctionClass = USB_CLASS_MSC, /* MSC */
+	.bFunctionSubClass = USB_MSC_SUBCLASS_SCSI,
+	.bFunctionProtocol = USB_MSC_PROTOCOL_BBB,
+	.iFunction = 0x06,
+}};
+#endif
+
 const struct usb_interface ifaces[] = {{
 	.num_altsetting = 1,
 	.altsetting = &hid_iface,
 	.iface_assoc = hid_iad,
+#ifdef USB_ACM_ENABLE
 },{
 	.num_altsetting = 1,
 	.altsetting = comm_iface,
@@ -271,6 +291,13 @@ const struct usb_interface ifaces[] = {{
 }, {
 	.num_altsetting = 1,
 	.altsetting = data_iface,
+#endif
+#ifdef USB_MSC_ENABLE
+},{
+	.num_altsetting = 1,
+	.altsetting = msc_iface,
+	.iface_assoc = msc_iad,
+#endif
 }};
 
 const struct usb_config_descriptor config = {
@@ -278,7 +305,11 @@ const struct usb_config_descriptor config = {
 	.bDescriptorType = USB_DT_CONFIGURATION,
 	.wTotalLength = 0,
 #ifdef USB_ACM_ENABLE
+#ifdef USB_MSC_ENABLE
+	.bNumInterfaces = 4,
+#else
 	.bNumInterfaces = 3,
+#endif
 #else
 	.bNumInterfaces = 1,
 #endif
@@ -295,7 +326,8 @@ const char *usb_strings[] = {
 	"STM32 CMSIS-DAP",
 	"0001A0000000",
 	"CMSIS-DAP HID",
-	"CMSIS-DAP CDC"
+	"CMSIS-DAP CDC",
+	"CMSIS-DAP MSC"
 };
 
 static void cdcacm_data_1_rx_cb(usbd_device *usbd_dev, uint8_t ep)
