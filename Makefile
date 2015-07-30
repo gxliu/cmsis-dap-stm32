@@ -5,4 +5,4 @@ clean:
 flash:
 	make -C src flash
 
-	.PHONY	all clean flash
+.PHONY:all clean flash
